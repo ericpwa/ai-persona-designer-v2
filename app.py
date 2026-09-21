@@ -13,6 +13,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Helper: Render HTML cleanly without Markdown code-block indentation bugs
+def render_html(html_str):
+    if not html_str:
+        return
+    # Strip leading/trailing whitespace from each line so Markdown parser never treats indented lines as code blocks
+    lines = [line.strip() for line in html_str.split("\n") if line.strip()]
+    cleaned_html = "\n".join(lines)
+    st.markdown(cleaned_html, unsafe_allow_html=True)
+
 # Load Custom CSS
 def load_css(file_name):
     if os.path.exists(file_name):
@@ -83,7 +92,6 @@ def validate_api_key(api_key):
     if not client:
         return False
         
-    # List of universal models to test in priority order
     test_models = [
         st.session_state.model_name,
         "gemini-2.0-flash",
@@ -93,7 +101,6 @@ def validate_api_key(api_key):
         "gemini-flash"
     ]
     
-    # Remove duplicates preserving order
     unique_test_models = []
     for m in test_models:
         if m not in unique_test_models:
@@ -113,7 +120,6 @@ def validate_api_key(api_key):
             last_err = e
             continue
             
-    # If all test models fail, format a helpful error message
     err_str = str(last_err)
     if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
         st.session_state.api_error = "API Key 無效，請檢查是否複製完整或包含多餘字元。"
@@ -124,8 +130,8 @@ def validate_api_key(api_key):
     return False
 
 # Header Component
-st.markdown("<h1 class='main-title'>👤 人物誌設計師 Persona Designer</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-title'>專為行銷人與 AI 新手打造的視覺化人物誌生成工具。按部就班，打造精準客群畫像！</p>", unsafe_allow_html=True)
+render_html("<h1 class='main-title'>👤 人物誌設計師 Persona Designer</h1>")
+render_html("<p class='sub-title'>專為行銷人與 AI 新手打造的視覺化人物誌生成工具。按部就班，打造精準客群畫像！</p>")
 
 # --- SIDEBAR: API KEY & SETTINGS (BYOK) ---
 with st.sidebar:
@@ -168,11 +174,11 @@ with st.sidebar:
 
     # Status Display
     if st.session_state.api_key_valid:
-        st.markdown("<div style='color:#10b981; font-weight:bold; margin-bottom:15px;'>● 服務狀態：已啟用 (Active)</div>", unsafe_allow_html=True)
+        render_html("<div style='color:#10b981; font-weight:bold; margin-bottom:15px;'>● 服務狀態：已啟用 (Active)</div>")
     else:
-        st.markdown("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>", unsafe_allow_html=True)
+        render_html("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>")
         if st.session_state.api_error:
-            st.markdown(f"<div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#fca5a5; margin-bottom:15px;'><b>詳細原因：</b><br>{st.session_state.api_error}</div>", unsafe_allow_html=True)
+            render_html(f"<div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#fca5a5; margin-bottom:15px;'><b>詳細原因：</b><br>{st.session_state.api_error}</div>")
 
     # Guide Accordion
     with st.expander("❓ 如何取得免費的 API 金鑰？"):
@@ -189,11 +195,11 @@ with st.sidebar:
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.2.1 | 增強型驗證版")
+    st.caption("人物誌設計師 v1.3.0 | 視覺與 UI 最佳化版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
-    st.markdown(
+    render_html(
         """
         <div class="glass-card">
             <h3 style="color:#a78bfa; margin-top:0;">👋 歡迎使用人物誌設計師！</h3>
@@ -204,8 +210,7 @@ if not st.session_state.api_key_valid:
                 本網頁是一個純前端/本地運行的 Streamlit 應用程式。您的 API 金鑰僅會存存在您的網頁會話中，直接發送給 Google 官方 API 節點，絕不會被上傳或分享到任何其他第三方伺服器，請放心使用。
             </div>
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
     st.stop()
 
@@ -233,7 +238,7 @@ steps_html = f"""
     </div>
 </div>
 """
-st.markdown(steps_html, unsafe_allow_html=True)
+render_html(steps_html)
 
 
 # --- HELPER: ROBUST CONTENT GENERATION WITH AUTO-FALLBACK ---
@@ -390,7 +395,7 @@ def ai_generate_personas():
 # STEP 1: BRAND & PRODUCT PROFILE
 # ==========================================
 if st.session_state.step == 1:
-    st.markdown(
+    render_html(
         """
         <div class="guide-alert">
             <div class="guide-title">💡 小白行銷心法 1：從「你是誰」開始</div>
@@ -399,8 +404,7 @@ if st.session_state.step == 1:
                 <b>別擔心不會寫！</b> 隨意輸入幾個關鍵字，再點擊「✨ AI 幫我潤飾」按鈕，讓 AI 幫你寫出大師級的品牌文案！
             </p>
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
     
     st.markdown("### 📝 填寫品牌與產品資訊")
@@ -420,8 +424,8 @@ if st.session_state.step == 1:
             height=180
         )
     with col2:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='ai-helper-btn'>", unsafe_allow_html=True)
+        render_html("<div style='height: 28px;'></div>")
+        render_html("<div class='ai-helper-btn'>")
         if st.button("✨ AI 幫我潤飾描述"):
             if not brand_desc.strip():
                 st.warning("⚠️ 請先輸入一些簡單的產品描述關鍵字喔！")
@@ -430,7 +434,7 @@ if st.session_state.step == 1:
                     polished = ai_polish_description(brand_desc)
                     st.session_state.brand_desc = polished
                     st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        render_html("</div>")
         st.caption("輸入關鍵字後，點選此按鈕可以讓 AI 將描述擴充為完整且吸引人的品牌簡介。")
 
     # Update states
@@ -438,7 +442,7 @@ if st.session_state.step == 1:
     st.session_state.brand_desc = brand_desc
     
     # Navigation
-    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    render_html("<div style='height: 30px;'></div>")
     col_prev, col_next = st.columns([1, 1])
     with col_next:
         if st.button("下一步：描述目標客群 ➡️"):
@@ -453,7 +457,7 @@ if st.session_state.step == 1:
 # STEP 2: TARGET AUDIENCE PROFILE
 # ==========================================
 elif st.session_state.step == 2:
-    st.markdown(
+    render_html(
         """
         <div class="guide-alert">
             <div class="guide-title">💡 小白行銷心法 2：定位你的潛在顧客</div>
@@ -462,8 +466,7 @@ elif st.session_state.step == 2:
                 <b>毫無頭緒嗎？</b> 點擊下方的「💡 AI 推薦客群原型」按鈕，AI 就會根據你第一步輸入的產品，自動推導出三個最合適的受眾群體。
             </p>
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
     
     st.markdown("### 👥 目標客群與痛點描述")
@@ -484,8 +487,8 @@ elif st.session_state.step == 2:
             height=120
         )
     with col2:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='ai-helper-btn'>", unsafe_allow_html=True)
+        render_html("<div style='height: 28px;'></div>")
+        render_html("<div class='ai-helper-btn'>")
         if st.button("💡 AI 推薦客群原型"):
             with st.spinner("AI 正在分析市場定位中..."):
                 suggestions = ai_suggest_audiences(
@@ -493,7 +496,7 @@ elif st.session_state.step == 2:
                     st.session_state.brand_desc
                 )
                 st.session_state.suggested_audiences = suggestions
-        st.markdown("</div>", unsafe_allow_html=True)
+        render_html("</div>")
         st.caption("AI 將分析您的品牌定位，並推薦三個高潛力的目標消費族群。")
         
     # Show recommendations if loaded
@@ -502,15 +505,14 @@ elif st.session_state.step == 2:
         rec_cols = st.columns(3)
         for idx, rec in enumerate(st.session_state.suggested_audiences):
             with rec_cols[idx]:
-                st.markdown(
+                render_html(
                     f"""
                     <div style="background:rgba(139,92,246,0.08); border: 1px dashed rgba(139,92,246,0.3); border-radius:15px; padding:15px; height:100%;">
                         <strong style="color:#a78bfa; font-size:1.05rem;">📍 {rec.get('archetype', '')}</strong>
                         <p style="font-size:0.85rem; margin-top:5px; color:#cbd5e1;"><b>特徵：</b>{rec.get('description', '')}</p>
                         <p style="font-size:0.85rem; margin-bottom:15px; color:#f472b6;"><b>痛點：</b>{rec.get('pain_point', '')}</p>
                     </div>
-                    """,
-                    unsafe_allow_html=True
+                    """
                 )
                 if st.button(f"套用客群 {idx+1}", key=f"apply_rec_{idx}"):
                     st.session_state.audience_desc = rec.get('description', '')
@@ -523,7 +525,7 @@ elif st.session_state.step == 2:
     st.session_state.audience_pain = audience_pain
     
     # Navigation
-    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    render_html("<div style='height: 30px;'></div>")
     col_prev, col_next = st.columns([1, 1])
     with col_prev:
         if st.button("⬅️ 上一步：品牌與產品"):
@@ -542,7 +544,7 @@ elif st.session_state.step == 2:
 # STEP 3: PERSONA CONFIGURATION
 # ==========================================
 elif st.session_state.step == 3:
-    st.markdown(
+    render_html(
         """
         <div class="guide-alert">
             <div class="guide-title">💡 小白行銷心法 3：細化設定</div>
@@ -550,8 +552,7 @@ elif st.session_state.step == 3:
                 在這裡，您可以選擇想要生成的人物誌數量。我們建議先生成 <b>2 個</b>，這樣可以讓您在設計行銷方案時，有兩個不同切入點（例如：一個重感性、一個重理性；一個重價格、一個重便利）進行對比。
             </p>
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
     
     st.markdown("### ⚙️ 人物誌產出偏好設定")
@@ -585,7 +586,7 @@ elif st.session_state.step == 3:
     st.session_state.focus_preference = focus_preference
     
     # Navigation
-    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    render_html("<div style='height: 30px;'></div>")
     col_prev, col_next = st.columns([1, 1])
     with col_prev:
         if st.button("⬅️ 上一步：目標客群"):
@@ -648,8 +649,8 @@ elif st.session_state.step == 4:
                 brand_loy = traits.get('brand_loyalty', 50)
                 dec_speed = traits.get('decision_speed', 50)
                 
-                # Display HTML Persona Card
-                st.markdown(
+                # Display HTML Persona Card cleanly using render_html to avoid code block parsing
+                render_html(
                     f"""
                     <div class="persona-card">
                         <div class="persona-header">
@@ -783,8 +784,7 @@ elif st.session_state.step == 4:
                             </div>
                         </div>
                     </div>
-                    """,
-                    unsafe_allow_html=True
+                    """
                 )
 
         # --- EXPORT TOOLS ---
@@ -853,7 +853,7 @@ elif st.session_state.step == 4:
             st.code(md_report[:500] + "\n... (以下省略，請點選下載或複製完整檔案) ...", language="markdown")
 
         # Go back / Reset
-        st.markdown("<div style='height: 35px;'></div>", unsafe_allow_html=True)
+        render_html("<div style='height: 35px;'></div>")
         col_prev, col_next = st.columns([1, 1])
         with col_prev:
             if st.button("⬅️ 修改設定或重填"):

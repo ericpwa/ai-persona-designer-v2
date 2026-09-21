@@ -1,0 +1,398 @@
+/* Load modern fonts */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
+
+/* Apply base styling to custom HTML components */
+.main-title {
+    font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+    font-weight: 800;
+    font-size: 2.8rem;
+    background: linear-gradient(135deg, #a78bfa 0%, #ec4899 50%, #f43f5e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin-bottom: 5px;
+    letter-spacing: -0.03em;
+}
+
+.sub-title {
+    font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    margin-bottom: 30px;
+    font-weight: 300;
+}
+
+/* Glassmorphism card container */
+.glass-card {
+    background: rgba(22, 30, 46, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 15px 35px -5px rgba(139, 92, 246, 0.15);
+    transform: translateY(-2px);
+}
+
+/* Step Wizard styles */
+.wizard-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0 35px 0;
+    padding: 0 10px;
+    position: relative;
+}
+
+.wizard-line {
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: #1e293b;
+    z-index: 1;
+    transform: translateY(-50%);
+}
+
+.wizard-line-active {
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    height: 3px;
+    background: linear-gradient(90deg, #8b5cf6, #ec4899);
+    z-index: 2;
+    transform: translateY(-50%);
+    transition: width 0.5s ease-in-out;
+}
+
+.wizard-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 3;
+    width: 80px;
+}
+
+.wizard-circle {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #161e2e;
+    border: 2px solid #334155;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wizard-step.active .wizard-circle {
+    background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+    border-color: transparent;
+    color: #ffffff;
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+    transform: scale(1.15);
+}
+
+.wizard-step.completed .wizard-circle {
+    background: #1e1b4b;
+    border-color: #8b5cf6;
+    color: #a78bfa;
+}
+
+.wizard-label {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 500;
+    color: #64748b;
+    text-align: center;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+}
+
+.wizard-step.active .wizard-label {
+    color: #f8fafc;
+    font-weight: 700;
+}
+
+.wizard-step.completed .wizard-label {
+    color: #a78bfa;
+}
+
+/* User Guide Alert Styling */
+.guide-alert {
+    background: linear-gradient(135deg, rgba(30, 27, 75, 0.4) 0%, rgba(88, 28, 135, 0.1) 100%);
+    border-left: 4px solid #a78bfa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.guide-title {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 700;
+    color: #c084fc;
+    font-size: 1rem;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.guide-content {
+    font-family: 'Noto Sans TC', sans-serif;
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Persona Visual Display Cards */
+.persona-card {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 24px;
+    overflow: hidden;
+    margin-bottom: 30px;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+}
+
+.persona-header {
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(236, 72, 153, 0.05) 100%);
+    padding: 30px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.persona-avatar-wrapper {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(139, 92, 246, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    overflow: hidden;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.persona-avatar-wrapper img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.persona-meta {
+    flex-grow: 1;
+}
+
+.persona-name-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.persona-name {
+    font-family: 'Noto Sans TC', 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 1.6rem;
+    color: #ffffff;
+    margin: 0;
+}
+
+.persona-tag {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    color: #e9d5ff;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+.persona-slogan {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-style: italic;
+    color: #94a3b8;
+    font-size: 0.95rem;
+    margin-top: 6px;
+    margin-bottom: 0;
+    border-left: 3px solid #db2777;
+    padding-left: 10px;
+}
+
+.persona-body {
+    padding: 24px;
+}
+
+/* Demographics Table */
+.demo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.demo-item {
+    background: rgba(30, 41, 59, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+}
+
+.demo-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+.demo-value {
+    font-size: 1rem;
+    color: #cbd5e1;
+    font-weight: 700;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+/* Personality Metrics */
+.metrics-section {
+    margin-bottom: 24px;
+}
+
+.metric-row {
+    margin-bottom: 12px;
+}
+
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+.metric-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.metric-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #8b5cf6 0%, #ec4899 100%);
+    border-radius: 4px;
+}
+
+/* Content block styling (pain points, goals, etc.) */
+.content-box {
+    background: rgba(22, 30, 46, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 16px;
+    padding: 18px;
+    height: 100%;
+}
+
+.content-box-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+.content-box-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.88rem;
+    color: #cbd5e1;
+    line-height: 1.6;
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+.content-box-list li {
+    margin-bottom: 8px;
+}
+
+/* Marketing strategy section styling */
+.marketing-section {
+    background: linear-gradient(135deg, rgba(88, 28, 135, 0.15) 0%, rgba(219, 39, 119, 0.08) 100%);
+    border: 1px solid rgba(167, 139, 250, 0.15);
+    border-radius: 18px;
+    padding: 20px;
+    margin-top: 24px;
+}
+
+.marketing-title {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 800;
+    color: #f472b6;
+    font-size: 1.05rem;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* CSS for streamlit native button overrides to look premium */
+div.stButton > button {
+    background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%) !important;
+    color: white !important;
+    font-weight: 600 !important;
+    border: none !important;
+    padding: 8px 20px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+    transition: all 0.2s ease !important;
+}
+
+div.stButton > button:hover {
+    box-shadow: 0 6px 18px rgba(139, 92, 246, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+div.stButton > button:active {
+    transform: translateY(1px) !important;
+}
+
+/* Minor helper button styling (e.g. Help Me Write) */
+div.ai-helper-btn > button {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(167, 139, 250, 0.3) !important;
+    box-shadow: none !important;
+}
+
+div.ai-helper-btn > button:hover {
+    background: rgba(139, 92, 246, 0.1) !important;
+    border-color: #8b5cf6 !important;
+}

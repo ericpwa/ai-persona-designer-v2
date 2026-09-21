@@ -26,7 +26,6 @@ def clean_json_string(text):
     if not text:
         return ""
     text = text.strip()
-    # Remove markdown code block fences if present
     if text.startswith("```"):
         lines = text.split("\n")
         if lines[0].startswith("```"):
@@ -34,7 +33,6 @@ def clean_json_string(text):
         if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
         text = "\n".join(lines).strip()
-    # Secondary fallback regex for JSON array or object
     match = re.search(r'(\[.*\]|\{.*\})', text, re.DOTALL)
     if match:
         return match.group(1).strip()
@@ -46,6 +44,7 @@ session_vars = {
     "api_key": "",
     "api_key_valid": False,
     "model_name": "gemini-2.5-flash",
+    "available_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash", "gemini-pro"],
     "brand_name": "",
     "brand_desc": "",
     "audience_desc": "",
@@ -70,22 +69,71 @@ def get_gemini_client(api_key):
         st.session_state.api_error = f"載入 Google GenAI SDK 失敗: {str(e)}"
         return None
 
-# Helper: Validate API Key
+# Helper: Dynamically Fetch Available Models from Google API
+def fetch_available_models(api_key):
+    client = get_gemini_client(api_key)
+    if not client:
+        return session_vars["available_models"]
+    
+    discovered_models = []
+    try:
+        # Query Google API for live active models supported by user's key
+        for m in client.models.list():
+            name = getattr(m, 'name', '') or getattr(m, 'model', '')
+            # Clean 'models/' prefix if present
+            if name.startswith('models/'):
+                name = name[7:]
+            # Filter for text-generation Gemini models
+            if 'gemini' in name.lower() and not any(x in name.lower() for x in ['embedding', 'aqa', 'imagen', 'audio', 'realtime']):
+                discovered_models.append(name)
+    except Exception as e:
+        pass
+    
+    # Fallback to curated standard models if list empty
+    curated_defaults = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash", "gemini-pro"]
+    if discovered_models:
+        # Merge discovered models with curated defaults without duplicates
+        combined = []
+        for item in curated_defaults + discovered_models:
+            if item not in combined:
+                combined.append(item)
+        return combined
+    return curated_defaults
+
+# Helper: Validate API Key and Populate Live Models
 def validate_api_key(api_key):
     if not api_key or not api_key.strip():
         return False
     try:
         from google import genai
         client = genai.Client(api_key=api_key.strip())
-        # Quick ping with current model
+        
+        # 1. Dynamically fetch models
+        live_models = fetch_available_models(api_key.strip())
+        st.session_state.available_models = live_models
+        
+        # 2. Test generation with current selected model or fallback
+        target_model = st.session_state.model_name
+        if target_model not in live_models and live_models:
+            target_model = live_models[0]
+            st.session_state.model_name = target_model
+            
         client.models.generate_content(
-            model=st.session_state.model_name,
+            model=target_model,
             contents="PING"
         )
         return True
     except Exception as e:
-        st.session_state.api_error = str(e)
-        return False
+        # Try testing with generic 'gemini-flash' alias as fallback
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key.strip())
+            client.models.generate_content(model="gemini-flash", contents="PING")
+            st.session_state.model_name = "gemini-flash"
+            return True
+        except Exception as e2:
+            st.session_state.api_error = str(e)
+            return False
 
 # Header Component
 st.markdown("<h1 class='main-title'>👤 人物誌設計師 Persona Designer</h1>", unsafe_allow_html=True)
@@ -103,29 +151,31 @@ with st.sidebar:
         help="此 Key 僅儲存於您當前的瀏覽器會話中，絕不傳送到第三方伺服器。"
     )
     
-    # Model Select
-    model_options = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
-    selected_model = st.selectbox(
-        "選擇 AI 模型版本",
-        options=model_options,
-        index=model_options.index(st.session_state.model_name) if st.session_state.model_name in model_options else 0
-    )
-    st.session_state.model_name = selected_model
-    
     # Validate API Key if changed
     if api_key_input.strip() != st.session_state.api_key.strip():
         st.session_state.api_key = api_key_input.strip()
         st.session_state.api_error = None
         if st.session_state.api_key:
-            with st.spinner("驗證金鑰中..."):
+            with st.spinner("驗證金鑰並即時連線 Google 模型清單中..."):
                 is_valid = validate_api_key(st.session_state.api_key)
                 st.session_state.api_key_valid = is_valid
                 if is_valid:
-                    st.success("✅ 金鑰驗證成功！")
+                    st.success("✅ 金鑰驗證成功！模型清單已即時同步。")
                 else:
                     st.error("❌ 金鑰驗證失敗，請檢查輸入。")
         else:
             st.session_state.api_key_valid = False
+
+    # Model Selection (Populated dynamically from API + Curated list)
+    model_options = st.session_state.available_models
+    curr_index = model_options.index(st.session_state.model_name) if st.session_state.model_name in model_options else 0
+    selected_model = st.selectbox(
+        "選擇 AI 模型版本 (已啟用動態防退場機制)",
+        options=model_options,
+        index=curr_index,
+        help="預設使用 Google 官方最新推薦的 gemini-2.5-flash。若舊模型退場，系統會自動切換最新別名。"
+    )
+    st.session_state.model_name = selected_model
 
     # Status Display
     if st.session_state.api_key_valid:
@@ -134,6 +184,17 @@ with st.sidebar:
         st.markdown("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>", unsafe_allow_html=True)
         if st.session_state.api_error:
             st.caption(f"錯誤訊息: {st.session_state.api_error}")
+
+    # Model Upgrade & Anti-Deprecation Notice
+    st.markdown(
+        """
+        <div style='background:rgba(139,92,246,0.1); border-radius:8px; padding:10px; border:1px solid rgba(139,92,246,0.2); font-size:0.8rem; color:#cbd5e1; margin-bottom:15px;'>
+            <b>🛡️ 模型防退場機制保障：</b><br>
+            系統內建雙重備援鏈。若選擇的模型因官方退場或配額限制失效，將自動啟用多層自動降級備援（Auto-Fallback），確保生成不中斷。
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     # Guide Accordion
     with st.expander("❓ 如何取得免費的 API 金鑰？"):
@@ -150,7 +211,7 @@ with st.sidebar:
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.1.0 | 開源免費版")
+    st.caption("人物誌設計師 v1.2.0 | 動態模型防退場版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
@@ -197,33 +258,57 @@ steps_html = f"""
 st.markdown(steps_html, unsafe_allow_html=True)
 
 
-# --- AI HELPER FUNCTION: BRAND DESCRIPTION POLISH ---
-def ai_polish_description(raw_desc):
+# --- HELPER: ROBUST CONTENT GENERATION WITH AUTO-FALLBACK ---
+def generate_content_with_fallback(prompt, config=None):
     client = get_gemini_client(st.session_state.api_key)
     if not client:
-        return raw_desc
+        raise Exception("Gemini Client 初始化失敗")
     
+    # Candidate fallback models in priority order
+    candidate_models = [
+        st.session_state.model_name,
+        "gemini-2.5-flash",
+        "gemini-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
+    # Remove duplicates while preserving order
+    models_to_try = []
+    for m in candidate_models:
+        if m not in models_to_try:
+            models_to_try.append(m)
+            
+    last_error = None
+    for model_name in models_to_try:
+        try:
+            kwargs = {"model": model_name, "contents": prompt}
+            if config:
+                kwargs["config"] = config
+            response = client.models.generate_content(**kwargs)
+            return response.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise last_error if last_error else Exception("全數備援模型均無法連線")
+
+
+# --- AI HELPER FUNCTION: BRAND DESCRIPTION POLISH ---
+def ai_polish_description(raw_desc):
     prompt = f"""
     你是一位資深的品牌顧問與文案大師。請將以下這段簡短的產品或品牌描述，擴充並潤飾成一段專業、有吸引力且具備獨特價值主張的品牌與產品介紹（約 150 字，以繁體中文撰寫）。
     
     原始描述：'{raw_desc}'
     """
     try:
-        response = client.models.generate_content(
-            model=st.session_state.model_name,
-            contents=prompt,
-        )
-        return response.text.strip()
+        res_text = generate_content_with_fallback(prompt)
+        return res_text.strip()
     except Exception as e:
         st.error(f"AI 潤飾失敗: {str(e)}")
         return raw_desc
 
 # --- AI HELPER FUNCTION: TARGET AUDIENCE ARCHETYPES SUGGESTION ---
 def ai_suggest_audiences(brand_name, brand_desc):
-    client = get_gemini_client(st.session_state.api_key)
-    if not client:
-        return []
-    
     prompt = f"""
     你是一位專業的行銷策略規劃師。根據以下品牌與產品介紹，為其推薦 3 個最合理且最具潛力的目標客群（人物誌原型）。
     請以繁體中文回應，並必須輸出為一個合法的 JSON 陣列，每個元素包含：
@@ -235,11 +320,8 @@ def ai_suggest_audiences(brand_name, brand_desc):
     產品介紹：'{brand_desc}'
     """
     try:
-        response = client.models.generate_content(
-            model=st.session_state.model_name,
-            contents=prompt,
-        )
-        cleaned_text = clean_json_string(response.text)
+        res_text = generate_content_with_fallback(prompt)
+        cleaned_text = clean_json_string(res_text)
         return json.loads(cleaned_text)
     except Exception as e:
         st.error(f"AI 推薦失敗: {str(e)}")
@@ -247,10 +329,6 @@ def ai_suggest_audiences(brand_name, brand_desc):
 
 # --- AI HELPER FUNCTION: GENERATE FULL PERSONAS ---
 def ai_generate_personas():
-    client = get_gemini_client(st.session_state.api_key)
-    if not client:
-        return
-    
     from google.genai import types
     
     prompt = f"""
@@ -317,16 +395,14 @@ def ai_generate_personas():
     ]
     """
     
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        system_instruction="你是一位資深的行銷策略總監與消費者心理學專家。你的工作是根據品牌、產品及目標客群資訊，生成極具洞察力、真實且可立即用於行銷規劃的「人物誌（Persona）」。你必須使用繁體中文（Taiwan）進行回應，且內容要具體、有商業可行性。"
+    )
+    
     try:
-        response = client.models.generate_content(
-            model=st.session_state.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                system_instruction="你是一位資深的行銷策略總監與消費者心理學專家。你的工作是根據品牌、產品及目標客群資訊，生成極具洞察力、真實且可立即用於行銷規劃的「人物誌（Persona）」。你必須使用繁體中文（Taiwan）進行回應，且內容要具體、有商業可行性。"
-            )
-        )
-        cleaned_text = clean_json_string(response.text)
+        res_text = generate_content_with_fallback(prompt, config=config)
+        cleaned_text = clean_json_string(res_text)
         st.session_state.personas = json.loads(cleaned_text)
     except Exception as e:
         st.error(f"人物誌生成失敗: {str(e)}")

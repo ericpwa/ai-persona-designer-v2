@@ -43,8 +43,8 @@ session_vars = {
     "step": 1,
     "api_key": "",
     "api_key_valid": False,
-    "model_name": "gemini-2.5-flash",
-    "available_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash", "gemini-pro"],
+    "model_name": "gemini-2.0-flash",
+    "available_models": ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-flash", "gemini-pro"],
     "brand_name": "",
     "brand_desc": "",
     "audience_desc": "",
@@ -64,76 +64,64 @@ for var, default in session_vars.items():
 def get_gemini_client(api_key):
     try:
         from google import genai
-        return genai.Client(api_key=api_key)
+        clean_key = api_key.strip().strip("'").strip('"')
+        return genai.Client(api_key=clean_key)
     except Exception as e:
         st.session_state.api_error = f"載入 Google GenAI SDK 失敗: {str(e)}"
         return None
 
-# Helper: Dynamically Fetch Available Models from Google API
-def fetch_available_models(api_key):
-    client = get_gemini_client(api_key)
-    if not client:
-        return session_vars["available_models"]
-    
-    discovered_models = []
-    try:
-        # Query Google API for live active models supported by user's key
-        for m in client.models.list():
-            name = getattr(m, 'name', '') or getattr(m, 'model', '')
-            # Clean 'models/' prefix if present
-            if name.startswith('models/'):
-                name = name[7:]
-            # Filter for text-generation Gemini models
-            if 'gemini' in name.lower() and not any(x in name.lower() for x in ['embedding', 'aqa', 'imagen', 'audio', 'realtime']):
-                discovered_models.append(name)
-    except Exception as e:
-        pass
-    
-    # Fallback to curated standard models if list empty
-    curated_defaults = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash", "gemini-pro"]
-    if discovered_models:
-        # Merge discovered models with curated defaults without duplicates
-        combined = []
-        for item in curated_defaults + discovered_models:
-            if item not in combined:
-                combined.append(item)
-        return combined
-    return curated_defaults
-
-# Helper: Validate API Key and Populate Live Models
+# Helper: Validate API Key with Multi-Model Fallback
 def validate_api_key(api_key):
-    if not api_key or not api_key.strip():
+    if not api_key:
         return False
-    try:
-        from google import genai
-        client = genai.Client(api_key=api_key.strip())
+    clean_key = api_key.strip().strip("'").strip('"')
+    if not clean_key:
+        st.session_state.api_error = "金鑰不可為空白或全空格"
+        return False
         
-        # 1. Dynamically fetch models
-        live_models = fetch_available_models(api_key.strip())
-        st.session_state.available_models = live_models
+    client = get_gemini_client(clean_key)
+    if not client:
+        return False
         
-        # 2. Test generation with current selected model or fallback
-        target_model = st.session_state.model_name
-        if target_model not in live_models and live_models:
-            target_model = live_models[0]
-            st.session_state.model_name = target_model
+    # List of universal models to test in priority order
+    test_models = [
+        st.session_state.model_name,
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro",
+        "gemini-flash"
+    ]
+    
+    # Remove duplicates preserving order
+    unique_test_models = []
+    for m in test_models:
+        if m not in unique_test_models:
+            unique_test_models.append(m)
             
-        client.models.generate_content(
-            model=target_model,
-            contents="PING"
-        )
-        return True
-    except Exception as e:
-        # Try testing with generic 'gemini-flash' alias as fallback
+    last_err = None
+    for model in unique_test_models:
         try:
-            from google import genai
-            client = genai.Client(api_key=api_key.strip())
-            client.models.generate_content(model="gemini-flash", contents="PING")
-            st.session_state.model_name = "gemini-flash"
+            client.models.generate_content(
+                model=model,
+                contents="PING"
+            )
+            st.session_state.model_name = model
+            st.session_state.api_error = None
             return True
-        except Exception as e2:
-            st.session_state.api_error = str(e)
-            return False
+        except Exception as e:
+            last_err = e
+            continue
+            
+    # If all test models fail, format a helpful error message
+    err_str = str(last_err)
+    if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
+        st.session_state.api_error = "API Key 無效，請檢查是否複製完整或包含多餘字元。"
+    elif "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+        st.session_state.api_error = "此 API Key 配額已滿或觸發 Rate Limit，請稍後重試。"
+    else:
+        st.session_state.api_error = f"驗證失敗: {err_str}"
+    return False
 
 # Header Component
 st.markdown("<h1 class='main-title'>👤 人物誌設計師 Persona Designer</h1>", unsafe_allow_html=True)
@@ -152,28 +140,29 @@ with st.sidebar:
     )
     
     # Validate API Key if changed
-    if api_key_input.strip() != st.session_state.api_key.strip():
-        st.session_state.api_key = api_key_input.strip()
+    clean_input = api_key_input.strip().strip("'").strip('"')
+    if clean_input != st.session_state.api_key.strip():
+        st.session_state.api_key = clean_input
         st.session_state.api_error = None
-        if st.session_state.api_key:
-            with st.spinner("驗證金鑰並即時連線 Google 模型清單中..."):
-                is_valid = validate_api_key(st.session_state.api_key)
+        if clean_input:
+            with st.spinner("驗證金鑰中..."):
+                is_valid = validate_api_key(clean_input)
                 st.session_state.api_key_valid = is_valid
                 if is_valid:
-                    st.success("✅ 金鑰驗證成功！模型清單已即時同步。")
+                    st.success("✅ 金鑰驗證成功！")
                 else:
                     st.error("❌ 金鑰驗證失敗，請檢查輸入。")
         else:
             st.session_state.api_key_valid = False
 
-    # Model Selection (Populated dynamically from API + Curated list)
+    # Model Selection
     model_options = st.session_state.available_models
     curr_index = model_options.index(st.session_state.model_name) if st.session_state.model_name in model_options else 0
     selected_model = st.selectbox(
-        "選擇 AI 模型版本 (已啟用動態防退場機制)",
+        "選擇 AI 模型版本 (已啟用動態備援機制)",
         options=model_options,
         index=curr_index,
-        help="預設使用 Google 官方最新推薦的 gemini-2.5-flash。若舊模型退場，系統會自動切換最新別名。"
+        help="預設使用相容性最高、最穩定的模型。若遇模型限制會自動升降級。"
     )
     st.session_state.model_name = selected_model
 
@@ -183,18 +172,7 @@ with st.sidebar:
     else:
         st.markdown("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>", unsafe_allow_html=True)
         if st.session_state.api_error:
-            st.caption(f"錯誤訊息: {st.session_state.api_error}")
-
-    # Model Upgrade & Anti-Deprecation Notice
-    st.markdown(
-        """
-        <div style='background:rgba(139,92,246,0.1); border-radius:8px; padding:10px; border:1px solid rgba(139,92,246,0.2); font-size:0.8rem; color:#cbd5e1; margin-bottom:15px;'>
-            <b>🛡️ 模型防退場機制保障：</b><br>
-            系統內建雙重備援鏈。若選擇的模型因官方退場或配額限制失效，將自動啟用多層自動降級備援（Auto-Fallback），確保生成不中斷。
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            st.markdown(f"<div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#fca5a5; margin-bottom:15px;'><b>詳細原因：</b><br>{st.session_state.api_error}</div>", unsafe_allow_html=True)
 
     # Guide Accordion
     with st.expander("❓ 如何取得免費的 API 金鑰？"):
@@ -206,12 +184,12 @@ with st.sidebar:
             4. 點選 **"Create API Key"**，並選擇您的專案。
             5. **複製** 產生的 API Key，並貼到上方輸入框中。
             
-            *註：個人使用通常包含免費配額，完全符合 BYOK 免費規範！*
+            *註：請確保貼上時無多餘空格。個人免費配額即可完全免費使用！*
             """
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.2.0 | 動態模型防退場版")
+    st.caption("人物誌設計師 v1.2.1 | 增強型驗證版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
@@ -264,15 +242,14 @@ def generate_content_with_fallback(prompt, config=None):
     if not client:
         raise Exception("Gemini Client 初始化失敗")
     
-    # Candidate fallback models in priority order
     candidate_models = [
         st.session_state.model_name,
-        "gemini-2.5-flash",
-        "gemini-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-flash"
+        "gemini-1.5-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro",
+        "gemini-flash"
     ]
-    # Remove duplicates while preserving order
     models_to_try = []
     for m in candidate_models:
         if m not in models_to_try:

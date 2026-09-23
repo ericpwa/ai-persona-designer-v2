@@ -92,11 +92,30 @@ def validate_api_key(api_key):
     if not client:
         return False
         
-    # Standard models to test in order of universal compatibility
+    # Attempt 1: Dynamic Model Discovery via client.models.list()
+    try:
+        raw_models = list(client.models.list())
+        discovered = []
+        for m in raw_models:
+            name = getattr(m, "name", "").replace("models/", "")
+            methods = getattr(m, "supported_generation_methods", [])
+            if "generateContent" in methods or "gemini" in name:
+                if name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b", "gemini-2.5-flash"]:
+                    discovered.append(name)
+        if discovered:
+            st.session_state.available_models = discovered
+            if st.session_state.model_name not in discovered:
+                st.session_state.model_name = discovered[0]
+            st.session_state.api_error = None
+            return True
+    except Exception:
+        pass
+
+    # Attempt 2: Test generate_content with priority models
     models_to_test = [
         st.session_state.model_name,
-        "gemini-1.5-flash",
         "gemini-2.0-flash",
+        "gemini-1.5-flash",
         "gemini-1.5-pro",
         "gemini-1.5-flash-8b"
     ]
@@ -118,24 +137,37 @@ def validate_api_key(api_key):
             return True
         except Exception as e:
             last_err = e
-            # If the error is an explicit Key error (Invalid Key or 403 Forbidden), stop testing other models
             err_text = str(e)
-            if "API_KEY_INVALID" in err_text or "API key not valid" in err_text or "403" in err_text or "Forbidden" in err_text or "RESOURCE_EXHAUSTED" in err_text or "429" in err_text:
+            if any(k in err_text for k in ["API_KEY_INVALID", "API key not valid", "403", "Forbidden", "RESOURCE_EXHAUSTED", "429"]):
                 break
             continue
             
-    # Format accurate, honest diagnostic error message
+    # Format accurate, honest diagnostic error message with step-by-step resolution guidance
     err_str = str(last_err)
     if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
-        st.session_state.api_error = "❌ 金鑰無效 (API_KEY_INVALID)：請檢查複製的金鑰是否正確完整。"
+        st.session_state.api_error = (
+            "❌ <b>金鑰無效 (API_KEY_INVALID)</b><br>"
+            "請檢查複製的金鑰字元是否完整（標準金鑰開頭為 <code>AIzaSy...</code>）。"
+        )
     elif "403" in err_str or "Forbidden" in err_str or "not allowed by policy" in err_str:
-        st.session_state.api_error = "❌ 存取權限受限 (403 Forbidden)：此 API Key 受 Google 政策限制，或未啟用 Generative Language API 權限。"
+        st.session_state.api_error = (
+            "❌ <b>存取權限受限 (403 Forbidden)</b><br>"
+            "目前 API Key 缺少 <i>Generative Language API</i> 存取權限。<br>"
+            "👉 請前往 <a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#38bdf8; font-weight:bold;'>Google AI Studio</a> 點選 <b>Create API Key</b> 重新生成免費金鑰。"
+        )
     elif "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
-        st.session_state.api_error = "❌ 配額上限 (429 Rate Limit)：此 API Key 已達免費額度每分鐘限制，請稍候 1 分鐘重試。"
+        st.session_state.api_error = (
+            "❌ <b>配額上限 (429 Rate Limit)</b><br>"
+            "此 API Key 已達免費額度每分鐘限制，請稍候 1 分鐘重試。"
+        )
     elif "NOT_FOUND" in err_str or "404" in err_str:
-        st.session_state.api_error = "❌ 模型無法連線 (404 Not Found)：目前使用的 API 帳號無法存取該模型端點。"
+        st.session_state.api_error = (
+            "❌ <b>API 服務或模型未開通 (404 Not Found)</b><br>"
+            "您使用的 API Key 屬於尚未開通 Generative AI 服務的 GCP 專案，或金鑰類型不正確。<br>"
+            "👉 <b>10 秒解決方法：</b>前往 <a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#38bdf8; font-weight:bold;'>Google AI Studio</a> 點選 <b>Create API Key</b> 免費建立專用金鑰。"
+        )
     else:
-        st.session_state.api_error = f"❌ 驗證失敗: {err_str}"
+        st.session_state.api_error = f"❌ <b>驗證失敗：</b> {err_str}"
     return False
 
 # Header Component
@@ -208,23 +240,74 @@ with st.sidebar:
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.3.2 | 準確診斷版")
+    st.caption("人物誌設計師 v1.3.3 | 極速啟動與診斷版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
     render_html(
         """
-        <div class="glass-card">
-            <h3 style="color:#a78bfa; margin-top:0;">👋 歡迎使用人物誌設計師！</h3>
-            <p>在開始規劃您的行銷人物誌之前，我們需要您提供自己的 <b>Google Gemini API Key</b>。這樣我們才能召喚 AI 助理為您服務！</p>
-            <p>請在<b>左側選單</b>中輸入您的金鑰。如果您還沒有金鑰，可以點選左側下方摺疊選單中的指引前往免費申請。</p>
-            <div style="background:rgba(236,72,153,0.1); border-radius:10px; padding:15px; border:1px solid rgba(236,72,153,0.3); margin-top:15px;">
-                <b>🔒 隱私與安全保障：</b><br>
-                本網頁是一個純前端/本地運行的 Streamlit 應用程式。您的 API 金鑰僅會存存在您的網頁會話中，直接發送給 Google 官方 API 節點，絕不會被上傳或分享到任何其他第三方伺服器，請放心使用。
-            </div>
+        <div class="glass-card" style="padding: 24px; margin-bottom: 20px;">
+            <h2 style="color:#a78bfa; margin-top:0; font-size: 1.5rem;">👋 歡迎使用人物誌設計師！</h2>
+            <p style="font-size: 1rem; color:#e2e8f0; line-height: 1.6; margin-bottom: 0;">
+                本工具採用 <b>BYOK (Bring Your Own Key)</b> 架構，請在下方貼上您的 <b>Google Gemini API Key</b> 即可立即啟動 AI 人物誌生成服務！
+            </p>
         </div>
         """
     )
+    
+    col1, col2 = st.columns([1.2, 1])
+    with col1:
+        st.markdown("### 🔑 輸入 API Key 啟動服務")
+        main_key_val = st.text_input(
+            "請貼上您的 Google Gemini API Key：",
+            value=st.session_state.api_key,
+            type="password",
+            placeholder="AIzaSy...",
+            key="main_page_api_key_input",
+            help="金鑰僅存在您目前的瀏覽器會話中，絕不儲存或傳至第三方伺服器。"
+        )
+        
+        clean_main_key = main_key_val.strip().strip("'").strip('"').strip('`')
+        
+        if st.button("🚀 驗證並啟動服務", type="primary", use_container_width=True):
+            if not clean_main_key:
+                st.error("請先貼上有效的 API Key！")
+            else:
+                with st.spinner("驗證金鑰並連線 Google API 中..."):
+                    st.session_state.api_key = clean_main_key
+                    valid = validate_api_key(clean_main_key)
+                    st.session_state.api_key_valid = valid
+                    if valid:
+                        st.success("✅ 金鑰驗證成功！即將為您載入系統...")
+                        st.rerun()
+                        
+        if st.session_state.api_error:
+            render_html(
+                f"""
+                <div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:10px; padding:15px; margin-top:15px; color:#fca5a5;'>
+                    {st.session_state.api_error}
+                </div>
+                """
+            )
+            
+    with col2:
+        render_html(
+            """
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 20px;">
+                <h4 style="color: #38bdf8; margin-top: 0;">💡 10 秒免費取得 API Key 懶人包：</h4>
+                <ol style="color: #cbd5e1; padding-left: 20px; line-height: 1.8; margin-bottom: 15px;">
+                    <li>點選前往 👉 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #38bdf8; font-weight: bold; text-decoration: underline;">Google AI Studio 官網 🔗</a></li>
+                    <li>使用您的 <b>Google 個人帳號</b> 登入</li>
+                    <li>點選 <b>"Create API Key"</b> 按鈕生成金鑰</li>
+                    <li>複製金鑰（開頭為 <code>AIzaSy...</code>）貼至左側輸入框</li>
+                </ol>
+                <div style="font-size: 0.85rem; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                    🛡️ <b>隱私與安全保障：</b><br>
+                    全過程完全免費、無須信用卡。金鑰僅用於本會話直接發送請求至 Google 官方 API 節點。
+                </div>
+            </div>
+            """
+        )
     st.stop()
 
 # --- STEP WIZARD PROGRESS BAR (HTML/CSS) ---

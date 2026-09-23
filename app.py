@@ -51,8 +51,8 @@ session_vars = {
     "step": 1,
     "api_key": "",
     "api_key_valid": False,
-    "model_name": "gemini-2.0-flash",
-    "available_models": ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"],
+    "model_name": "gemini-1.5-flash",
+    "available_models": ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"],
     "brand_name": "",
     "brand_desc": "",
     "audience_desc": "",
@@ -72,45 +72,18 @@ for var, default in session_vars.items():
 def get_gemini_client(api_key):
     try:
         from google import genai
-        clean_key = api_key.strip().strip("'").strip('"')
+        clean_key = api_key.strip().strip("'").strip('"').strip('`')
         return genai.Client(api_key=clean_key)
     except Exception as e:
         st.session_state.api_error = f"載入 Google GenAI SDK 失敗: {str(e)}"
         return None
 
-# Helper: Dynamically Fetch Available Official Gemini Models
-def fetch_available_models(api_key):
-    client = get_gemini_client(api_key)
-    if not client:
-        return session_vars["available_models"]
-    
-    discovered_models = []
-    try:
-        for m in client.models.list():
-            name = getattr(m, 'name', '') or getattr(m, 'model', '')
-            if name.startswith('models/'):
-                name = name[7:]
-            # Filter for official text generation models supported by generateContent
-            if name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"]:
-                discovered_models.append(name)
-    except Exception:
-        pass
-    
-    defaults = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"]
-    if discovered_models:
-        combined = []
-        for item in defaults + discovered_models:
-            if item not in combined:
-                combined.append(item)
-        return combined
-    return defaults
-
-# Helper: Validate API Key with Multi-Model Fallback
+# Helper: Honest & Transparent API Key Validation
 def validate_api_key(api_key):
     if not api_key:
         st.session_state.api_error = "請輸入您的 Google Gemini API Key"
         return False
-    clean_key = api_key.strip().strip("'").strip('"')
+    clean_key = api_key.strip().strip("'").strip('"').strip('`')
     if not clean_key:
         st.session_state.api_error = "金鑰不可為空白或全空格"
         return False
@@ -119,29 +92,22 @@ def validate_api_key(api_key):
     if not client:
         return False
         
-    # Dynamically query available models if possible
-    live_models = fetch_available_models(clean_key)
-    if live_models:
-        st.session_state.available_models = live_models
-        
-    # Valid, existing models to test in priority order
-    test_models = [
+    # Standard models to test in order of universal compatibility
+    models_to_test = [
         st.session_state.model_name,
-        "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "gemini-2.0-flash",
         "gemini-1.5-pro",
         "gemini-1.5-flash-8b"
     ]
     
-    unique_test_models = []
-    for m in test_models:
-        if m and m in st.session_state.available_models and m not in unique_test_models:
-            unique_test_models.append(m)
-    if not unique_test_models:
-        unique_test_models = live_models or ["gemini-2.0-flash", "gemini-1.5-flash"]
+    unique_models = []
+    for m in models_to_test:
+        if m and m not in unique_models:
+            unique_models.append(m)
             
     last_err = None
-    for model in unique_test_models:
+    for model in unique_models:
         try:
             client.models.generate_content(
                 model=model,
@@ -152,17 +118,24 @@ def validate_api_key(api_key):
             return True
         except Exception as e:
             last_err = e
+            # If the error is an explicit Key error (Invalid Key or 403 Forbidden), stop testing other models
+            err_text = str(e)
+            if "API_KEY_INVALID" in err_text or "API key not valid" in err_text or "403" in err_text or "Forbidden" in err_text or "RESOURCE_EXHAUSTED" in err_text or "429" in err_text:
+                break
             continue
             
+    # Format accurate, honest diagnostic error message
     err_str = str(last_err)
     if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
-        st.session_state.api_error = "API Key 無效，請檢查是否複製完整或包含了多餘字元。"
+        st.session_state.api_error = "❌ 金鑰無效 (API_KEY_INVALID)：請檢查複製的金鑰是否正確完整。"
+    elif "403" in err_str or "Forbidden" in err_str or "not allowed by policy" in err_str:
+        st.session_state.api_error = "❌ 存取權限受限 (403 Forbidden)：此 API Key 受 Google 政策限制，或未啟用 Generative Language API 權限。"
     elif "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
-        st.session_state.api_error = "此 API Key 配額已滿或觸發 Rate Limit，請稍後重試。"
+        st.session_state.api_error = "❌ 配額上限 (429 Rate Limit)：此 API Key 已達免費額度每分鐘限制，請稍候 1 分鐘重試。"
     elif "NOT_FOUND" in err_str or "404" in err_str:
-        st.session_state.api_error = "所選 AI 模型不可用，請在下拉選單更換為 gemini-2.0-flash 或 gemini-1.5-flash。"
+        st.session_state.api_error = "❌ 模型無法連線 (404 Not Found)：目前使用的 API 帳號無法存取該模型端點。"
     else:
-        st.session_state.api_error = f"驗證失敗: {err_str}"
+        st.session_state.api_error = f"❌ 驗證失敗: {err_str}"
     return False
 
 # Header Component
@@ -181,8 +154,12 @@ with st.sidebar:
         help="此 Key 僅儲存於您當前的瀏覽器會話中，絕不傳送到第三方伺服器。"
     )
     
+    # Check key format tip
+    clean_input = api_key_input.strip().strip("'").strip('"').strip('`')
+    if clean_input and not clean_input.startswith("AIzaSy"):
+        st.caption("💡 提醒：標準 Google AI Studio API Key 通常以 'AIzaSy' 開頭。")
+        
     # Validate API Key if changed
-    clean_input = api_key_input.strip().strip("'").strip('"')
     if clean_input != st.session_state.api_key.strip():
         st.session_state.api_key = clean_input
         st.session_state.api_error = None
@@ -191,9 +168,9 @@ with st.sidebar:
                 is_valid = validate_api_key(clean_input)
                 st.session_state.api_key_valid = is_valid
                 if is_valid:
-                    st.success("✅ 金鑰驗證成功！")
+                    st.success("✅ 金鑰驗證成功！服務已啟用。")
                 else:
-                    st.error("❌ 金鑰驗證失敗，請檢查輸入。")
+                    st.error("❌ 金鑰驗證失敗。")
         else:
             st.session_state.api_key_valid = False
 
@@ -204,7 +181,7 @@ with st.sidebar:
         "選擇 AI 模型版本",
         options=model_options,
         index=curr_index,
-        help="預設使用相容性最高、最穩定的 gemini-2.0-flash。若遇模型限制會自動備援。"
+        help="預設使用相容性最高、100% 開放的 gemini-1.5-flash 模型。"
     )
     st.session_state.model_name = selected_model
 
@@ -214,7 +191,7 @@ with st.sidebar:
     else:
         render_html("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>")
         if st.session_state.api_error:
-            render_html(f"<div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#fca5a5; margin-bottom:15px;'><b>詳細原因：</b><br>{st.session_state.api_error}</div>")
+            render_html(f"<div style='background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:12px; font-size:0.85rem; color:#fca5a5; margin-bottom:15px;'>{st.session_state.api_error}</div>")
 
     # Guide Accordion
     with st.expander("❓ 如何取得免費的 API 金鑰？"):
@@ -224,14 +201,14 @@ with st.sidebar:
             2. 使用您的 **Google 帳號** 登入。
             3. 點選左上角的 **"Get API Key"** 按鈕。
             4. 點選 **"Create API Key"**，並選擇您的專案。
-            5. **複製** 產生的 API Key，並貼到上方輸入框中。
+            5. **複製** 產生的 API Key（開頭為 `AIzaSy...`），貼到上方輸入框中。
             
             *註：請確保貼上時無多餘空格。個人免費配額即可完全免費使用！*
             """
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.3.1 | 官方模型防崩潰版")
+    st.caption("人物誌設計師 v1.3.2 | 準確診斷版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
@@ -285,8 +262,8 @@ def generate_content_with_fallback(prompt, config=None):
     
     candidate_models = [
         st.session_state.model_name,
-        "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "gemini-2.0-flash",
         "gemini-1.5-pro",
         "gemini-1.5-flash-8b"
     ]

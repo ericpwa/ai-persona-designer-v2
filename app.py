@@ -17,7 +17,6 @@ st.set_page_config(
 def render_html(html_str):
     if not html_str:
         return
-    # Strip leading/trailing whitespace from each line so Markdown parser never treats indented lines as code blocks
     lines = [line.strip() for line in html_str.split("\n") if line.strip()]
     cleaned_html = "\n".join(lines)
     st.markdown(cleaned_html, unsafe_allow_html=True)
@@ -53,7 +52,7 @@ session_vars = {
     "api_key": "",
     "api_key_valid": False,
     "model_name": "gemini-2.0-flash",
-    "available_models": ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-flash", "gemini-pro"],
+    "available_models": ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"],
     "brand_name": "",
     "brand_desc": "",
     "audience_desc": "",
@@ -79,9 +78,37 @@ def get_gemini_client(api_key):
         st.session_state.api_error = f"載入 Google GenAI SDK 失敗: {str(e)}"
         return None
 
+# Helper: Dynamically Fetch Available Official Gemini Models
+def fetch_available_models(api_key):
+    client = get_gemini_client(api_key)
+    if not client:
+        return session_vars["available_models"]
+    
+    discovered_models = []
+    try:
+        for m in client.models.list():
+            name = getattr(m, 'name', '') or getattr(m, 'model', '')
+            if name.startswith('models/'):
+                name = name[7:]
+            # Filter for official text generation models supported by generateContent
+            if name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"]:
+                discovered_models.append(name)
+    except Exception:
+        pass
+    
+    defaults = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"]
+    if discovered_models:
+        combined = []
+        for item in defaults + discovered_models:
+            if item not in combined:
+                combined.append(item)
+        return combined
+    return defaults
+
 # Helper: Validate API Key with Multi-Model Fallback
 def validate_api_key(api_key):
     if not api_key:
+        st.session_state.api_error = "請輸入您的 Google Gemini API Key"
         return False
     clean_key = api_key.strip().strip("'").strip('"')
     if not clean_key:
@@ -92,19 +119,26 @@ def validate_api_key(api_key):
     if not client:
         return False
         
+    # Dynamically query available models if possible
+    live_models = fetch_available_models(clean_key)
+    if live_models:
+        st.session_state.available_models = live_models
+        
+    # Valid, existing models to test in priority order
     test_models = [
         st.session_state.model_name,
         "gemini-2.0-flash",
         "gemini-1.5-flash",
-        "gemini-2.5-flash",
         "gemini-1.5-pro",
-        "gemini-flash"
+        "gemini-1.5-flash-8b"
     ]
     
     unique_test_models = []
     for m in test_models:
-        if m not in unique_test_models:
+        if m and m in st.session_state.available_models and m not in unique_test_models:
             unique_test_models.append(m)
+    if not unique_test_models:
+        unique_test_models = live_models or ["gemini-2.0-flash", "gemini-1.5-flash"]
             
     last_err = None
     for model in unique_test_models:
@@ -122,9 +156,11 @@ def validate_api_key(api_key):
             
     err_str = str(last_err)
     if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
-        st.session_state.api_error = "API Key 無效，請檢查是否複製完整或包含多餘字元。"
+        st.session_state.api_error = "API Key 無效，請檢查是否複製完整或包含了多餘字元。"
     elif "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
         st.session_state.api_error = "此 API Key 配額已滿或觸發 Rate Limit，請稍後重試。"
+    elif "NOT_FOUND" in err_str or "404" in err_str:
+        st.session_state.api_error = "所選 AI 模型不可用，請在下拉選單更換為 gemini-2.0-flash 或 gemini-1.5-flash。"
     else:
         st.session_state.api_error = f"驗證失敗: {err_str}"
     return False
@@ -165,10 +201,10 @@ with st.sidebar:
     model_options = st.session_state.available_models
     curr_index = model_options.index(st.session_state.model_name) if st.session_state.model_name in model_options else 0
     selected_model = st.selectbox(
-        "選擇 AI 模型版本 (已啟用動態備援機制)",
+        "選擇 AI 模型版本",
         options=model_options,
         index=curr_index,
-        help="預設使用相容性最高、最穩定的模型。若遇模型限制會自動升降級。"
+        help="預設使用相容性最高、最穩定的 gemini-2.0-flash。若遇模型限制會自動備援。"
     )
     st.session_state.model_name = selected_model
 
@@ -195,7 +231,7 @@ with st.sidebar:
         )
         
     st.markdown("---")
-    st.caption("人物誌設計師 v1.3.0 | 視覺與 UI 最佳化版")
+    st.caption("人物誌設計師 v1.3.1 | 官方模型防崩潰版")
 
 # --- CHECK FOR API KEY ON MAIN SCREEN ---
 if not st.session_state.api_key_valid:
@@ -251,13 +287,12 @@ def generate_content_with_fallback(prompt, config=None):
         st.session_state.model_name,
         "gemini-2.0-flash",
         "gemini-1.5-flash",
-        "gemini-2.5-flash",
         "gemini-1.5-pro",
-        "gemini-flash"
+        "gemini-1.5-flash-8b"
     ]
     models_to_try = []
     for m in candidate_models:
-        if m not in models_to_try:
+        if m and m not in models_to_try:
             models_to_try.append(m)
             
     last_error = None

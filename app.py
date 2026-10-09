@@ -4,6 +4,7 @@ import os
 import re
 import urllib.parse
 from PIL import Image
+from model_routing import SUPPORTED_MODELS, available_supported_models, generation_candidates
 
 # Set up page config
 st.set_page_config(
@@ -51,8 +52,8 @@ session_vars = {
     "step": 1,
     "api_key": "",
     "api_key_valid": False,
-    "model_name": "gemini-1.5-flash",
-    "available_models": ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"],
+    "model_name": SUPPORTED_MODELS[0],
+    "available_models": list(SUPPORTED_MODELS),
     "brand_name": "",
     "brand_desc": "",
     "audience_desc": "",
@@ -68,6 +69,14 @@ for var, default in session_vars.items():
     if var not in st.session_state:
         st.session_state[var] = default
 
+# Retire stale model choices retained by an existing Streamlit session.
+if st.session_state.model_name not in SUPPORTED_MODELS:
+    st.session_state.model_name = SUPPORTED_MODELS[0]
+    st.session_state.api_key_valid = False
+st.session_state.available_models = [
+    model for model in st.session_state.available_models if model in SUPPORTED_MODELS
+] or list(SUPPORTED_MODELS)
+
 # Helper: Initialize Gemini Client
 def get_gemini_client(api_key):
     try:
@@ -75,100 +84,31 @@ def get_gemini_client(api_key):
         clean_key = api_key.strip().strip("'").strip('"').strip('`')
         return genai.Client(api_key=clean_key)
     except Exception as e:
-        st.session_state.api_error = f"載入 Google GenAI SDK 失敗: {str(e)}"
+        st.session_state.api_error = "無法初始化 Google GenAI SDK，請檢查安裝與設定。"
         return None
 
-# Helper: Honest & Transparent API Key Validation
+# Read model metadata only: validation must not generate billable content.
 def validate_api_key(api_key):
-    if not api_key:
-        st.session_state.api_error = "請輸入您的 Google Gemini API Key"
-        return False
     clean_key = api_key.strip().strip("'").strip('"').strip('`')
     if not clean_key:
-        st.session_state.api_error = "金鑰不可為空白或全空格"
+        st.session_state.api_error = "請輸入您的 Google Gemini API Key"
         return False
-        
     client = get_gemini_client(clean_key)
     if not client:
         return False
-        
-    # Attempt 1: Dynamic Model Discovery via client.models.list()
     try:
-        raw_models = list(client.models.list())
-        discovered = []
-        for m in raw_models:
-            name = getattr(m, "name", "").replace("models/", "")
-            methods = getattr(m, "supported_generation_methods", [])
-            if "generateContent" in methods or "gemini" in name:
-                if name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b", "gemini-2.5-flash"]:
-                    discovered.append(name)
-        if discovered:
-            st.session_state.available_models = discovered
-            if st.session_state.model_name not in discovered:
-                st.session_state.model_name = discovered[0]
-            st.session_state.api_error = None
-            return True
+        discovered = available_supported_models(client.models.list())
     except Exception:
-        pass
-
-    # Attempt 2: Test generate_content with priority models
-    models_to_test = [
-        st.session_state.model_name,
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash-8b"
-    ]
-    
-    unique_models = []
-    for m in models_to_test:
-        if m and m not in unique_models:
-            unique_models.append(m)
-            
-    last_err = None
-    for model in unique_models:
-        try:
-            client.models.generate_content(
-                model=model,
-                contents="PING"
-            )
-            st.session_state.model_name = model
-            st.session_state.api_error = None
-            return True
-        except Exception as e:
-            last_err = e
-            err_text = str(e)
-            if any(k in err_text for k in ["API_KEY_INVALID", "API key not valid", "403", "Forbidden", "RESOURCE_EXHAUSTED", "429"]):
-                break
-            continue
-            
-    # Format accurate, honest diagnostic error message with step-by-step resolution guidance
-    err_str = str(last_err)
-    if "API_KEY_INVALID" in err_str or "API key not valid" in err_str:
-        st.session_state.api_error = (
-            "❌ <b>金鑰無效 (API_KEY_INVALID)</b><br>"
-            "請檢查複製的金鑰字元是否完整（標準金鑰開頭為 <code>AIzaSy...</code>）。"
-        )
-    elif "403" in err_str or "Forbidden" in err_str or "not allowed by policy" in err_str:
-        st.session_state.api_error = (
-            "❌ <b>存取權限受限 (403 Forbidden)</b><br>"
-            "目前 API Key 缺少 <i>Generative Language API</i> 存取權限。<br>"
-            "👉 請前往 <a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#38bdf8; font-weight:bold;'>Google AI Studio</a> 點選 <b>Create API Key</b> 重新生成免費金鑰。"
-        )
-    elif "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
-        st.session_state.api_error = (
-            "❌ <b>配額上限 (429 Rate Limit)</b><br>"
-            "此 API Key 已達免費額度每分鐘限制，請稍候 1 分鐘重試。"
-        )
-    elif "NOT_FOUND" in err_str or "404" in err_str:
-        st.session_state.api_error = (
-            "❌ <b>API 服務或模型未開通 (404 Not Found)</b><br>"
-            "您使用的 API Key 屬於尚未開通 Generative AI 服務的 GCP 專案，或金鑰類型不正確。<br>"
-            "👉 <b>10 秒解決方法：</b>前往 <a href='https://aistudio.google.com/app/apikey' target='_blank' style='color:#38bdf8; font-weight:bold;'>Google AI Studio</a> 點選 <b>Create API Key</b> 免費建立專用金鑰。"
-        )
-    else:
-        st.session_state.api_error = f"❌ <b>驗證失敗：</b> {err_str}"
-    return False
+        st.session_state.api_error = "無法取得模型清單。請檢查金鑰、權限或網路；尚未執行內容生成。"
+        return False
+    if not discovered:
+        st.session_state.api_error = "此帳號的模型清單未包含本工具支援的模型；尚未執行內容生成。"
+        return False
+    st.session_state.available_models = discovered
+    if st.session_state.model_name not in discovered:
+        st.session_state.model_name = discovered[0]
+    st.session_state.api_error = None
+    return True
 
 # Header Component
 render_html("<h1 class='main-title'>👤 人物誌設計師 Persona Designer</h1>")
@@ -183,7 +123,7 @@ with st.sidebar:
         "輸入您的 Google Gemini API Key",
         value=st.session_state.api_key,
         type="password",
-        help="此 Key 僅儲存於您當前的瀏覽器會話中，絕不傳送到第三方伺服器。"
+        help="Key 會傳到本工具的 Streamlit 伺服器，用於向 Google API 認證。生成會傳送輸入內容，可能依您的帳號計費；請勿輸入敏感資料。"
     )
     
     # Check key format tip
@@ -200,7 +140,7 @@ with st.sidebar:
                 is_valid = validate_api_key(clean_input)
                 st.session_state.api_key_valid = is_valid
                 if is_valid:
-                    st.success("✅ 金鑰驗證成功！服務已啟用。")
+                    st.success("✅ 模型清單存取成功；實際生成與帳號配額尚未驗證。")
                 else:
                     st.error("❌ 金鑰驗證失敗。")
         else:
@@ -213,13 +153,13 @@ with st.sidebar:
         "選擇 AI 模型版本",
         options=model_options,
         index=curr_index,
-        help="預設使用相容性最高、100% 開放的 gemini-1.5-flash 模型。"
+        help="預設使用穩定版 gemini-3.8-flash；模型清單依帳號權限篩選，實際生成仍可能受到配額與計費限制。"
     )
     st.session_state.model_name = selected_model
 
     # Status Display
     if st.session_state.api_key_valid:
-        render_html("<div style='color:#10b981; font-weight:bold; margin-bottom:15px;'>● 服務狀態：已啟用 (Active)</div>")
+        render_html("<div style='color:#10b981; font-weight:bold; margin-bottom:15px;'>● 模型清單可存取（生成尚待驗證）</div>")
     else:
         render_html("<div style='color:#ef4444; font-weight:bold; margin-bottom:15px;'>● 服務狀態：未啟用 (Key Required)</div>")
         if st.session_state.api_error:
@@ -264,7 +204,7 @@ if not st.session_state.api_key_valid:
             type="password",
             placeholder="AIzaSy...",
             key="main_page_api_key_input",
-            help="金鑰僅存在您目前的瀏覽器會話中，絕不儲存或傳至第三方伺服器。"
+            help="Key 會經 Streamlit 伺服器向 Google API 認證；生成會傳送輸入內容，可能依帳號計費。請勿輸入敏感資料。"
         )
         
         clean_main_key = main_key_val.strip().strip("'").strip('"').strip('`')
@@ -278,7 +218,7 @@ if not st.session_state.api_key_valid:
                     valid = validate_api_key(clean_main_key)
                     st.session_state.api_key_valid = valid
                     if valid:
-                        st.success("✅ 金鑰驗證成功！即將為您載入系統...")
+                        st.success("✅ 模型清單可存取；實際生成尚未驗證。即將載入系統...")
                         st.rerun()
                         
         if st.session_state.api_error:
@@ -303,7 +243,7 @@ if not st.session_state.api_key_valid:
                 </ol>
                 <div style="font-size: 0.85rem; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
                     🛡️ <b>隱私與安全保障：</b><br>
-                    全過程完全免費、無須信用卡。金鑰僅用於本會話直接發送請求至 Google 官方 API 節點。
+                    Key 會經本工具的 Streamlit 伺服器向 Google API 認證；生成時會傳送輸入內容，費用與配額依您的 Google 帳號而定。
                 </div>
             </div>
             """
@@ -343,18 +283,10 @@ def generate_content_with_fallback(prompt, config=None):
     if not client:
         raise Exception("Gemini Client 初始化失敗")
     
-    candidate_models = [
-        st.session_state.model_name,
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash-8b"
-    ]
-    models_to_try = []
-    for m in candidate_models:
-        if m and m not in models_to_try:
-            models_to_try.append(m)
-            
+    models_to_try = generation_candidates(
+        st.session_state.model_name, st.session_state.available_models
+    )
+
     last_error = None
     for model_name in models_to_try:
         try:
@@ -365,9 +297,12 @@ def generate_content_with_fallback(prompt, config=None):
             return response.text
         except Exception as e:
             last_error = e
+            # Only a missing model permits fallback; auth/quota/other errors stop.
+            if str(getattr(e, "code", "")) != "404":
+                raise RuntimeError("AI 生成失敗，請檢查模型權限、配額與網路。") from None
             continue
             
-    raise last_error if last_error else Exception("全數備援模型均無法連線")
+    raise RuntimeError("支援的模型均無法生成，請檢查帳號權限與設定。") from None
 
 
 # --- AI HELPER FUNCTION: BRAND DESCRIPTION POLISH ---
@@ -958,3 +893,4 @@ elif st.session_state.step == 4:
             if st.button("🔄 重新生成人物誌"):
                 st.session_state.personas = None
                 st.rerun()
+
